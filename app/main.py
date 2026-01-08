@@ -1,9 +1,6 @@
 import threading
 import socket  # noqa: F401
-
-# TODO
-def parse_resp(data: bytes):
-    pass
+from resp_parser import parse_resp
 
 
 def handle_input(client_conn: socket.socket):
