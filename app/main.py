@@ -1,20 +1,29 @@
 import threading
 import socket  # noqa: F401
-from resp_parser import parse_resp
+import io
+from .resp_parser import parse_resp, encode_resp
+from .commands import run_commands
 
 
 def handle_input(client_conn: socket.socket):
     while True:
-        client_msg = client_conn.recv(1024)
-        if not client_msg:
+        client_msg_raw = client_conn.recv(1024)
+        if not client_msg_raw:
             break
-        print("Client said:", client_msg)
+        print("Client said:", client_msg_raw)
 
-        if client_msg == b'$4\r\nPING\r\n':
-            client_conn.send(b"+PONG\r\n")
-        elif client_msg.startswith(b'*2\r\n$4\r\nECHO\r\n'):
-            to_send = client_msg.replace(b'*2\r\n$4\r\nECHO\r\n', b'')
-            client_conn.send(to_send)
+        buff = io.BytesIO(client_msg_raw)
+        commands = parse_resp(buff)
+
+        print("Parsed commands:", commands)
+
+        if isinstance(commands, list):
+            response = run_commands(commands)
+        else:
+            response = encode_resp(b"Input was not a list...", "simple_error")
+        
+        client_conn.send(response)
+
     
     print("Closing Connection!")
     client_conn.close()
