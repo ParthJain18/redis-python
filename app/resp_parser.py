@@ -30,7 +30,7 @@ def parse_resp(buff: io.BytesIO):
     return val
 
 def encode_resp(
-        data: bytes, 
+        data: bytes | None, 
         encoding_type: Literal[
             "simple_string", 
             "simple_error", 
@@ -38,6 +38,8 @@ def encode_resp(
             "bulk_string", 
             "array"] = "simple_string"
             ):
+    if not data:
+        return b'$-1\r\n'
     match encoding_type:
         case "simple_string":
             return b'+' + data + b'\r\n'
