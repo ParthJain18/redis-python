@@ -28,6 +28,7 @@ def handle_input(client_conn: socket.socket):
     print("Closing Connection!")
     client_conn.close()
 
+
 def main():
     print("Logs from your program will appear here!")
 

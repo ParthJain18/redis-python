@@ -1,9 +1,11 @@
 import io
 from typing import Literal
 
+
 def read_bytes(buff: io.BytesIO):
     val = buff.readline()
     return val[:-2]
+
 
 def parse_resp(buff: io.BytesIO):
     op = buff.read(1)
@@ -29,17 +31,28 @@ def parse_resp(buff: io.BytesIO):
         pass
     return val
 
+
 def encode_resp(
-        data: bytes | None, 
+        data: bytes | list[bytes] | None, 
         encoding_type: Literal[
             "simple_string", 
             "simple_error", 
             "integers", 
             "bulk_string", 
             "array"] = "simple_string"
-            ):
-    if not data:
+            ) -> bytes:
+    if data is None:
         return b'$-1\r\n'
+    
+    print(data)
+    
+    if isinstance(data, list):
+        to_return = b"*%d\r\n" % len(data)
+
+        for item in data:
+            to_return += encode_resp(item, "bulk_string")
+        return to_return
+
     match encoding_type:
         case "simple_string":
             return b'+' + data + b'\r\n'
@@ -49,6 +62,5 @@ def encode_resp(
             return b':' + data + b'\r\n'
         case "bulk_string":
             return b'$%d\r\n%s\r\n' %  (len(data), data)
-        # TODO array
         case _:
             return b'-Encoding not implemented.\r\n'
