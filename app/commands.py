@@ -1,7 +1,9 @@
 import time
+from threading import Condition, Lock
 from .resp_parser import encode_resp
 
 redis_dict = {}
+dict_lock = Lock()
 
 def run_commands(command: list[bytes]) -> bytes:
     match command[0].lower():
@@ -10,19 +12,28 @@ def run_commands(command: list[bytes]) -> bytes:
         case b'echo':
             return echo(command)
         case b'set':
-            return set(command)
+            with dict_lock:
+                return set(command)
         case b'get':
-            return get(command)
+            with dict_lock:
+                return get(command)
         case b'rpush':
-            return rpush(command)
+            with dict_lock:
+                return rpush(command)
         case b'lrange':
-            return lrange(command)
+            with dict_lock:
+                return lrange(command)
         case b'lpush':
-            return lpush(command)
+            with dict_lock:
+                return lpush(command)
         case b'llen':
-            return llen(command)
+            with dict_lock:
+                return llen(command)
         case b'lpop':
-            return lpop(command)
+            with dict_lock:
+                return lpop(command)
+        case b'blpop':
+            return blpop(command)
         case _:
             return encode_resp(b"Not Implemented Yet.", 'simple_error')
 
@@ -82,6 +93,11 @@ def rpush(command: list[bytes]) -> bytes:
             return encode_resp(b"It's not a list", "simple_error")
         
         value_list.append(item)
+        if it.get("conditions"):
+            condition = it.get("conditions")[0]
+            condition.notify()
+            it.get("conditions").pop(0)
+            
 
     value_list = it.get("value")
     return encode_resp(b"%d" % len(value_list), "integers")
@@ -129,6 +145,13 @@ def lpush(command: list[bytes]) -> bytes:
         
         value_list.insert(0, item)
 
+        if it.get("conditions"):
+            condition = it.get("conditions")[0]
+            condition.notify()
+            it.get("conditions").pop(0)
+            
+
+
     value_list = it.get("value")
     return encode_resp(b"%d" % len(value_list), "integers")
 
@@ -159,3 +182,48 @@ def lpop(command: list[bytes]) -> bytes:
 
     value = it.get("value").pop(0)
     return encode_resp(value, "bulk_string")
+
+
+def blpop(command: list[bytes]) -> bytes:
+
+    with dict_lock:
+        it = redis_dict.get(command[1])
+        if it and len(it.get("value")) > 0:
+            value = it.get("value").pop(0)
+            return encode_resp(value, "bulk_string")
+    
+        if not it or len(it.get("value")) == 0:
+            condition = Condition(dict_lock)
+            if not it:
+                redis_dict[command[1]] = {}
+                it = redis_dict[command[1]]
+            
+            if not it.get("conditions"):
+                it["conditions"] = []
+            
+            if not it.get("value"):
+                it["value"] = []
+            
+            if not isinstance(it["value"], list):
+                return encode_resp(b"It's not a list", "simple_error")
+            
+            it["conditions"].append(condition)
+
+            timeout = 0.0
+            if len(command) > 2:
+                timeout = float(command[2].decode())
+
+            while not len(it.get("value")) > 0:
+                print("Waiting...")
+                if timeout != 0:
+                    if not condition.wait(timeout=timeout):
+                        # Timeout occurred
+                        it.get("conditions").remove(condition)
+                        return encode_resp(None)
+                else:
+                    condition.wait()
+
+            val = it.get("value").pop(0)
+            return encode_resp(val, "bulk_string")
+        return encode_resp(b"Unexpected Error Occured", "simple_error")
+            
